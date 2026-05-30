@@ -9,10 +9,10 @@ This project was developed as part of a technical assignment for a Data Analyst 
 # Live Demo
 
 Frontend:
-https://your-frontend-url.vercel.app
+https://support-crm-beryl.vercel.app/
 
 Backend API:
-https://your-backend-url.onrender.com
+https://support-crm-pq99.onrender.com
 
 ---
 
@@ -180,7 +180,7 @@ DELETE /api/tickets/:ticket_id
 ## Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/support-crm.git
+git clone https://github.com/Domver345/support-crm.git
 ```
 
 ---
@@ -264,6 +264,6 @@ baseURL: "http://localhost:5000/api";
 Suman Das
 
 GitHub:
-https://github.com/yourusername
+https://github.com/Domver345
 
 ---

@@ -1,161 +1,157 @@
 const express = require("express");
 const router = express.Router();
 
-const db = require("../database");
+const fs = require("fs");
+const path = require("path");
 
-// ======================================================
-// CREATE NEW TICKET
-// POST /api/tickets
-// ======================================================
+const filePath = path.join(
+  __dirname,
+  "../data/tickets.json"
+);
+
+// ======================================
+// HELPERS
+// ======================================
+
+const readTickets = () => {
+  const data = fs.readFileSync(filePath);
+  return JSON.parse(data);
+};
+
+const writeTickets = (tickets) => {
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify(tickets, null, 2)
+  );
+};
+
+// ======================================
+// CREATE TICKET
+// ======================================
 
 router.post("/", (req, res) => {
-  const {
-    customer_name,
-    customer_email,
-    subject,
-    description,
-  } = req.body;
-
-  // Validation
-  if (
-    !customer_name ||
-    !customer_email ||
-    !subject ||
-    !description
-  ) {
-    return res.status(400).json({
-      success: false,
-      message: "All fields are required",
-    });
-  }
-
-  // Generate Ticket ID
-  const ticket_id = `TKT-${Date.now()}`;
-
-  const sql = `
-    INSERT INTO tickets (
-      ticket_id,
+  try {
+    const {
       customer_name,
       customer_email,
       subject,
       description,
-      status
-    )
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
+    } = req.body;
 
-  const values = [
-    ticket_id,
-    customer_name,
-    customer_email,
-    subject,
-    description,
-    "Open",
-  ];
-
-  db.run(sql, values, function (err) {
-    if (err) {
-      console.error(err);
-
-      return res.status(500).json({
+    if (
+      !customer_name ||
+      !customer_email ||
+      !subject ||
+      !description
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Failed to create ticket",
+        message: "All fields are required",
       });
     }
 
+    const tickets = readTickets();
+
+    const newTicket = {
+      id: Date.now(),
+      ticket_id: `TKT-${Date.now()}`,
+      customer_name,
+      customer_email,
+      subject,
+      description,
+      status: "Open",
+      notes: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    tickets.push(newTicket);
+
+    writeTickets(tickets);
+
     res.status(201).json({
       success: true,
-      ticket_id,
-      created_at: new Date(),
+      ticket_id: newTicket.ticket_id,
     });
-  });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to create ticket",
+    });
+  }
 });
 
-// ======================================================
+// ======================================
 // GET ALL TICKETS
-// GET /api/tickets
-// Supports:
-// ?status=Open
-// ?search=suman
-// ======================================================
+// ======================================
 
 router.get("/", (req, res) => {
-  const { status, search } = req.query;
+  try {
+    const { status, search } = req.query;
 
-  let sql = `SELECT * FROM tickets WHERE 1=1`;
-  let params = [];
+    let tickets = readTickets();
 
-  // Filter by status
-  if (status) {
-    sql += ` AND status = ?`;
-    params.push(status);
-  }
+    // Filter status
+    if (status) {
+      tickets = tickets.filter(
+        (ticket) => ticket.status === status
+      );
+    }
 
-  // Search functionality
-  if (search) {
-    sql += `
-      AND (
-        ticket_id LIKE ?
-        OR customer_name LIKE ?
-        OR customer_email LIKE ?
-        OR subject LIKE ?
-        OR description LIKE ?
-      )
-    `;
+    // Search
+    if (search) {
+      const term = search.toLowerCase();
 
-    const searchValue = `%${search}%`;
-
-    params.push(
-      searchValue,
-      searchValue,
-      searchValue,
-      searchValue,
-      searchValue
-    );
-  }
-
-  // Sort latest first
-  sql += ` ORDER BY created_at DESC`;
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      console.error(err);
-
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch tickets",
-      });
+      tickets = tickets.filter((ticket) =>
+        ticket.ticket_id
+          .toLowerCase()
+          .includes(term) ||
+        ticket.customer_name
+          .toLowerCase()
+          .includes(term) ||
+        ticket.customer_email
+          .toLowerCase()
+          .includes(term) ||
+        ticket.subject
+          .toLowerCase()
+          .includes(term) ||
+        ticket.description
+          .toLowerCase()
+          .includes(term)
+      );
     }
 
     res.json({
       success: true,
-      tickets: rows,
+      tickets,
     });
-  });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch tickets",
+    });
+  }
 });
 
-// ======================================================
+// ======================================
 // GET SINGLE TICKET
-// GET /api/tickets/:ticket_id
-// ======================================================
+// ======================================
 
 router.get("/:ticket_id", (req, res) => {
-  const { ticket_id } = req.params;
+  try {
+    const { ticket_id } = req.params;
 
-  const ticketSql = `
-    SELECT * FROM tickets
-    WHERE ticket_id = ?
-  `;
+    const tickets = readTickets();
 
-  db.get(ticketSql, [ticket_id], (err, ticket) => {
-    if (err) {
-      console.error(err);
-
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch ticket",
-      });
-    }
+    const ticket = tickets.find(
+      (t) => t.ticket_id === ticket_id
+    );
 
     if (!ticket) {
       return res.status(404).json({
@@ -164,92 +160,102 @@ router.get("/:ticket_id", (req, res) => {
       });
     }
 
-    // Fetch notes/comments
-    const notesSql = `
-      SELECT * FROM notes
-      WHERE ticket_id = ?
-      ORDER BY created_at DESC
-    `;
-
-    db.all(notesSql, [ticket_id], (err, notes) => {
-      if (err) {
-        console.error(err);
-
-        return res.status(500).json({
-          success: false,
-          message: "Failed to fetch notes",
-        });
-      }
-
-      res.json({
-        success: true,
-        ticket,
-        notes,
-      });
+    res.json({
+      success: true,
+      ticket,
+      notes: ticket.notes || [],
     });
-  });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch ticket",
+    });
+  }
 });
 
-// ======================================================
+// ======================================
 // UPDATE TICKET
-// PUT /api/tickets/:ticket_id
-// ======================================================
+// ======================================
 
 router.put("/:ticket_id", (req, res) => {
-  const { ticket_id } = req.params;
-  const { status, note_text } = req.body;
+  try {
+    const { ticket_id } = req.params;
+    const { status, note_text } = req.body;
 
-  // Update ticket status
-  const updateSql = `
-    UPDATE tickets
-    SET
-      status = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE ticket_id = ?
-  `;
+    const tickets = readTickets();
 
-  db.run(updateSql, [status, ticket_id], function (err) {
-    if (err) {
-      console.error(err);
+    const ticketIndex = tickets.findIndex(
+      (t) => t.ticket_id === ticket_id
+    );
 
-      return res.status(500).json({
+    if (ticketIndex === -1) {
+      return res.status(404).json({
         success: false,
-        message: "Failed to update ticket",
+        message: "Ticket not found",
       });
     }
 
-    // Optional note/comment
+    tickets[ticketIndex].status = status;
+    tickets[ticketIndex].updated_at =
+      new Date().toISOString();
+
     if (note_text && note_text.trim() !== "") {
-      const noteSql = `
-        INSERT INTO notes (
-          ticket_id,
-          note_text
-        )
-        VALUES (?, ?)
-      `;
-
-      db.run(noteSql, [ticket_id, note_text], (err) => {
-        if (err) {
-          console.error(err);
-
-          return res.status(500).json({
-            success: false,
-            message: "Status updated but failed to save note",
-          });
-        }
-
-        return res.json({
-          success: true,
-          message: "Ticket updated successfully",
-        });
-      });
-    } else {
-      return res.json({
-        success: true,
-        message: "Ticket updated successfully",
+      tickets[ticketIndex].notes.push({
+        id: Date.now(),
+        note_text,
+        created_at: new Date().toISOString(),
       });
     }
-  });
+
+    writeTickets(tickets);
+
+    res.json({
+      success: true,
+      message: "Ticket updated successfully",
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update ticket",
+    });
+  }
+});
+
+// ======================================
+// DELETE TICKET
+// ======================================
+
+router.delete("/:ticket_id", (req, res) => {
+  try {
+    const { ticket_id } = req.params;
+
+    let tickets = readTickets();
+
+    tickets = tickets.filter(
+      (t) => t.ticket_id !== ticket_id
+    );
+
+    writeTickets(tickets);
+
+    res.json({
+      success: true,
+      message: "Ticket deleted successfully",
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete ticket",
+    });
+  }
 });
 
 module.exports = router;

@@ -4,7 +4,7 @@ import { useParams, Link } from "react-router-dom";
 import API from "../api/axios";
 
 import Navbar from "../components/Navbar";
-import StatusBadge from "../components/Statusbadge";
+import StatusBadge from "../components/StatusBadge";
 
 function TicketDetails() {
   const { ticket_id } = useParams();
